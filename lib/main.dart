@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final List<Map<String, String>> surahs = [
   {'name': 'Al-Fatihah', 'meaning': 'The Opening'},
@@ -117,7 +118,8 @@ final List<Map<String, String>> surahs = [
   {'name': 'An-Nas', 'meaning': 'Mankind'},
 ];
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const App());
 }
 
@@ -158,6 +160,34 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _isSearching = false;
+  Set<int> _readSurahs = {};
+  late SharedPreferences _prefs;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReadState();
+  }
+
+  Future<void> _loadReadState() async {
+    _prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _readSurahs =
+          _prefs.getStringList('read_surahs')?.map(int.parse).toSet() ?? {};
+    });
+  }
+
+  Future<void> _toggleSurah(int index) async {
+    setState(() {
+      if (_readSurahs.contains(index)) {
+        _readSurahs.remove(index);
+      } else {
+        _readSurahs.add(index);
+      }
+    });
+    await _prefs.setStringList(
+        'read_surahs', _readSurahs.map((e) => e.toString()).toList());
+  }
 
   @override
   void dispose() {
@@ -242,10 +272,13 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.symmetric(vertical: 8.0),
         itemBuilder: (context, index) {
           final surah = filteredSurahs[index];
+          final surahIndex = surahs.indexOf(surah);
+          final isRead = _readSurahs.contains(surahIndex);
+
           return Card(
             child: ListTile(
               leading: CircleAvatar(
-                backgroundColor: Colors.green,
+                backgroundColor: isRead ? Colors.green : Colors.grey,
                 child: Text(
                   '${surahs.indexOf(surah) + 1}',
                   style: const TextStyle(
@@ -256,9 +289,10 @@ class _HomePageState extends State<HomePage> {
               ),
               title: Text(
                 surah['name']!,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
+                  color: isRead ? Colors.green : Colors.black87,
                 ),
               ),
               subtitle: Text(
@@ -268,9 +302,11 @@ class _HomePageState extends State<HomePage> {
                   color: Colors.grey[600],
                 ),
               ),
-              onTap: () {
-                // Handle tap
-              },
+              trailing: Icon(
+                isRead ? Icons.check_circle : Icons.check_circle_outline,
+                color: isRead ? Colors.green : Colors.grey,
+              ),
+              onTap: () => _toggleSurah(surahIndex),
             ),
           );
         },
