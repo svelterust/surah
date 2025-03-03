@@ -161,101 +161,96 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _isSearching = false;
-  Set<int> _readSurahs = {};
+  Set<int> _enabledSurahs = {};
+  Set<int> _suggestedSurahs = {};
   late SharedPreferences _prefs;
 
   @override
   void initState() {
     super.initState();
-    _loadReadState();
+    _loadState();
   }
 
-  Future<void> _loadReadState() async {
+  Future<void> _loadState() async {
     _prefs = await SharedPreferences.getInstance();
     setState(() {
-      _readSurahs =
-          _prefs.getStringList('read_surahs')?.map(int.parse).toSet() ?? {};
+      _enabledSurahs =
+          _prefs.getStringList('enabled_surahs')?.map(int.parse).toSet() ?? {};
+      _suggestedSurahs =
+          _prefs.getStringList('suggested_surahs')?.map(int.parse).toSet() ??
+              {};
     });
   }
 
   Future<void> _toggleSurah(int index) async {
     setState(() {
-      if (_readSurahs.contains(index)) {
-        _readSurahs.remove(index);
+      if (_enabledSurahs.contains(index)) {
+        _enabledSurahs.remove(index);
       } else {
-        _readSurahs.add(index);
+        _enabledSurahs.add(index);
       }
     });
     await _prefs.setStringList(
-        'read_surahs', _readSurahs.map((e) => e.toString()).toList());
+        'enabled_surahs', _enabledSurahs.map((e) => e.toString()).toList());
   }
 
-  List<int> getRandomUnreadSurahs({int count = 2}) {
-    List<int> readIndexes = [];
-
-    // Get all read surah indexes
-    for (int i = 0; i < surahs.length; i++) {
-      if (_readSurahs.contains(i)) {
-        readIndexes.add(i);
-      }
-    }
-
-    // Shuffle and take first 2 (or less if not enough read)
-    readIndexes.shuffle();
-    return readIndexes.take(count).toList();
+  Future<void> _saveSuggestedState() async {
+    await _prefs.setStringList(
+        'suggested_surahs', _suggestedSurahs.map((e) => e.toString()).toList());
   }
 
-  List<int> getNextUnreadSurahs(int startFrom, {int count = 2}) {
-    List<int> read = [];
-    int total = surahs.length;
+  List<int> getRandomSurahs({int count = 2}) {
+    // Get all enabled surahs that haven't been suggested yet
+    List<int> availableSurahs =
+        _enabledSurahs.where((i) => !_suggestedSurahs.contains(i)).toList();
 
-    for (int i = 0; i < total; i++) {
-      int index = (startFrom + i) % total;
-      if (_readSurahs.contains(index)) {
-        read.add(index);
-        if (read.length == count) break;
-      }
+    // If all enabled surahs have been suggested, reset suggested list
+    if (availableSurahs.isEmpty) {
+      _suggestedSurahs.clear();
+      availableSurahs = _enabledSurahs.toList();
+      _saveSuggestedState();
     }
 
-    if (read.length < count) {
-      for (int i = 0; i < startFrom; i++) {
-        if (_readSurahs.contains(i)) {
-          read.add(i);
-          if (read.length == count) break;
+    List<int> result = [];
+
+    // If we have at least one new surah available
+    if (availableSurahs.isNotEmpty) {
+      availableSurahs.shuffle();
+      result.add(availableSurahs[0]);
+      _suggestedSurahs.add(availableSurahs[0]);
+    }
+
+    // If we need one more and have more available
+    if (count > 1) {
+      if (availableSurahs.length > 1) {
+        result.add(availableSurahs[1]);
+        _suggestedSurahs.add(availableSurahs[1]);
+      } else {
+        // If no more new surahs available, pick randomly from previously suggested
+        List<int> suggestedPool =
+            _enabledSurahs.where((i) => i != result[0]).toList();
+        if (suggestedPool.isNotEmpty) {
+          suggestedPool.shuffle();
+          result.add(suggestedPool[0]);
         }
       }
     }
 
-    return read;
+    _saveSuggestedState();
+    return result;
   }
 
-  Future<void> _resetReadState() async {
+  Future<void> _resetState() async {
     setState(() {
-      _readSurahs.clear();
+      _enabledSurahs.clear();
+      _suggestedSurahs.clear();
     });
-    await _prefs.setStringList('read_surahs', []);
-  }
-
-  Future<void> _markNextSurahsAsRead() async {
-    int lastReadIndex = _readSurahs.isEmpty ? -1 : _readSurahs.reduce(max);
-    List<int> nextSurahs = getNextUnreadSurahs(lastReadIndex + 1);
-
-    if (nextSurahs.isEmpty) {
-      // Reset if complete
-      await _resetReadState();
-      // Get first 2 surahs after reset
-      nextSurahs = getNextUnreadSurahs(0);
-    }
-
-    // Mark them as read
-    for (int index in nextSurahs) {
-      await _toggleSurah(index);
-    }
+    await _prefs.setStringList('enabled_surahs', []);
+    await _prefs.setStringList('suggested_surahs', []);
   }
 
   void _showRecommendationModal(BuildContext context) {
-    // Get random surahs before showing modal
-    List<int> randomSurahs = getRandomUnreadSurahs();
+    List<int> randomSurahs = getRandomSurahs();
 
     showModalBottomSheet(
       context: context,
@@ -276,13 +271,13 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const SizedBox(height: 20),
-              if (randomSurahs.isEmpty)
+              if (_enabledSurahs.isEmpty)
                 const Text(
-                  'Congratulations! You have completed all surahs.',
+                  'No surahs have been enabled yet.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
-                    color: Colors.green,
+                    color: Colors.orange,
                   ),
                 )
               else
@@ -409,12 +404,12 @@ class _HomePageState extends State<HomePage> {
         itemBuilder: (context, index) {
           final surah = filteredSurahs[index];
           final surahIndex = surahs.indexOf(surah);
-          final isRead = _readSurahs.contains(surahIndex);
+          final isEnabled = _enabledSurahs.contains(surahIndex);
 
           return Card(
             child: ListTile(
               leading: CircleAvatar(
-                backgroundColor: isRead ? Colors.green : Colors.grey,
+                backgroundColor: isEnabled ? Colors.green : Colors.grey,
                 child: Text(
                   '${surahs.indexOf(surah) + 1}',
                   style: const TextStyle(
@@ -428,7 +423,7 @@ class _HomePageState extends State<HomePage> {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: isRead ? Colors.green : Colors.black87,
+                  color: isEnabled ? Colors.green : Colors.black87,
                 ),
               ),
               subtitle: Text(
@@ -439,8 +434,8 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               trailing: Icon(
-                isRead ? Icons.check_circle : Icons.check_circle_outline,
-                color: isRead ? Colors.green : Colors.grey,
+                isEnabled ? Icons.check_circle : Icons.check_circle_outline,
+                color: isEnabled ? Colors.green : Colors.grey,
               ),
               onTap: () => _toggleSurah(surahIndex),
             ),
