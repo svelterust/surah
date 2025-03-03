@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:math' show max;
 
 final List<Map<String, String>> surahs = [
   {'name': 'Al-Fatihah', 'meaning': 'The Opening'},
@@ -189,6 +190,135 @@ class _HomePageState extends State<HomePage> {
         'read_surahs', _readSurahs.map((e) => e.toString()).toList());
   }
 
+  List<int> getRandomUnreadSurahs({int count = 2}) {
+    List<int> unreadIndexes = [];
+    // Get all unread surah indexes
+    for (int i = 0; i < surahs.length; i++) {
+      if (!_readSurahs.contains(i)) {
+        unreadIndexes.add(i);
+      }
+    }
+
+    // Shuffle and take first 2 (or less if not enough unread)
+    unreadIndexes.shuffle();
+    return unreadIndexes.take(count).toList();
+  }
+
+  List<int> getNextUnreadSurahs(int startFrom, {int count = 2}) {
+    List<int> unread = [];
+    int total = surahs.length;
+
+    for (int i = 0; i < total; i++) {
+      int index = (startFrom + i) % total;
+      if (!_readSurahs.contains(index)) {
+        unread.add(index);
+        if (unread.length == count) break;
+      }
+    }
+
+    if (unread.length < count) {
+      for (int i = 0; i < startFrom; i++) {
+        if (!_readSurahs.contains(i)) {
+          unread.add(i);
+          if (unread.length == count) break;
+        }
+      }
+    }
+
+    return unread;
+  }
+
+  Future<void> _resetReadState() async {
+    setState(() {
+      _readSurahs.clear();
+    });
+    await _prefs.setStringList('read_surahs', []);
+  }
+
+  Future<void> _markNextSurahsAsRead() async {
+    int lastReadIndex = _readSurahs.isEmpty ? -1 : _readSurahs.reduce(max);
+    List<int> nextSurahs = getNextUnreadSurahs(lastReadIndex + 1);
+
+    if (nextSurahs.isEmpty) {
+      // Reset if complete
+      await _resetReadState();
+      // Get first 2 surahs after reset
+      nextSurahs = getNextUnreadSurahs(0);
+    }
+
+    // Mark them as read
+    for (int index in nextSurahs) {
+      await _toggleSurah(index);
+    }
+  }
+
+  void _showRecommendationModal(BuildContext context) {
+    // Get random surahs before showing modal
+    List<int> randomSurahs = getRandomUnreadSurahs();
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Suggested Surahs',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 20),
+              if (randomSurahs.isEmpty)
+                const Text(
+                  'Congratulations! You have completed all surahs.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.green,
+                  ),
+                )
+              else
+                ...randomSurahs.map((index) => ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.green,
+                        child: Text(
+                          '${index + 1}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        surahs[index]['name']!,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: Text(
+                        surahs[index]['meaning']!,
+                        style: TextStyle(
+                          fontStyle: FontStyle.italic,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      onTap: () => _toggleSurah(index),
+                    )),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -266,6 +396,11 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
         elevation: 2,
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showRecommendationModal(context),
+        backgroundColor: Colors.green,
+        child: const Icon(Icons.shuffle),
       ),
       body: ListView.builder(
         itemCount: filteredSurahs.length,
