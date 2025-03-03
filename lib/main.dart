@@ -355,7 +355,7 @@ class _HomePageState extends State<HomePage> {
                 autofocus: true,
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
-                  hintText: 'Ar-Rahman...',
+                  hintText: 'Search...',
                   hintStyle: const TextStyle(color: Colors.white70),
                   border: InputBorder.none,
                   suffixIcon: _searchQuery.isNotEmpty
