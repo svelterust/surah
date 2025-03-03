@@ -191,41 +191,42 @@ class _HomePageState extends State<HomePage> {
   }
 
   List<int> getRandomUnreadSurahs({int count = 2}) {
-    List<int> unreadIndexes = [];
-    // Get all unread surah indexes
+    List<int> readIndexes = [];
+
+    // Get all read surah indexes
     for (int i = 0; i < surahs.length; i++) {
-      if (!_readSurahs.contains(i)) {
-        unreadIndexes.add(i);
+      if (_readSurahs.contains(i)) {
+        readIndexes.add(i);
       }
     }
 
-    // Shuffle and take first 2 (or less if not enough unread)
-    unreadIndexes.shuffle();
-    return unreadIndexes.take(count).toList();
+    // Shuffle and take first 2 (or less if not enough read)
+    readIndexes.shuffle();
+    return readIndexes.take(count).toList();
   }
 
   List<int> getNextUnreadSurahs(int startFrom, {int count = 2}) {
-    List<int> unread = [];
+    List<int> read = [];
     int total = surahs.length;
 
     for (int i = 0; i < total; i++) {
       int index = (startFrom + i) % total;
-      if (!_readSurahs.contains(index)) {
-        unread.add(index);
-        if (unread.length == count) break;
+      if (_readSurahs.contains(index)) {
+        read.add(index);
+        if (read.length == count) break;
       }
     }
 
-    if (unread.length < count) {
+    if (read.length < count) {
       for (int i = 0; i < startFrom; i++) {
-        if (!_readSurahs.contains(i)) {
-          unread.add(i);
-          if (unread.length == count) break;
+        if (_readSurahs.contains(i)) {
+          read.add(i);
+          if (read.length == count) break;
         }
       }
     }
 
-    return unread;
+    return read;
   }
 
   Future<void> _resetReadState() async {
